@@ -26,22 +26,43 @@ public:
 	};
 
 	struct AskTaskResponse {
-		// Lab2: Your definition here.
+		mr_tasktype taskType;
+		int index;
+		string filename;
 	};
 
 	struct AskTaskRequest {
-		// Lab2: Your definition here.
+
 	};
 
 	struct SubmitTaskResponse {
-		// Lab2: Your definition here.
+
 	};
 
 	struct SubmitTaskRequest {
-		// Lab2: Your definition here.
+		int taskType;
+		int index;
 	};
 
 };
+
+inline unmarshall& operator>>(unmarshall& u, mr_protocol::AskTaskResponse& res)
+{
+	int type = 0;
+	u >> type;
+	res.taskType = mr_tasktype(type);
+	u >> res.index;
+	u >> res.filename;
+	return u;
+}
+
+inline marshall& operator<<(marshall& m, mr_protocol::AskTaskResponse res)
+{
+	m << int(res.taskType);
+	m << res.index;
+	m << res.filename;
+	return m;
+}
 
 #endif
 

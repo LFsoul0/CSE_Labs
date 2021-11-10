@@ -47,13 +47,70 @@ private:
 // Your code here -- RPC handlers for the worker to call.
 
 mr_protocol::status Coordinator::askTask(int, mr_protocol::AskTaskResponse &reply) {
-	// Lab2 : Your code goes here.
+	if (!isFinishedMap()) {
+		for (Task& task : mapTasks) {
+			mtx.lock();
+			if (!task.isAssigned) {
+				task.isAssigned = true;
+				reply.index = task.index;
+				reply.filename = files[reply.index];
+				mtx.unlock();
+
+				reply.taskType = mr_tasktype::MAP;
+				return mr_protocol::OK;
+			}
+			mtx.unlock();
+		}
+	}
+	else if (!isFinishedReduce()) {
+		for (Task& task : reduceTasks) {
+			mtx.lock();
+			if (!task.isAssigned) {
+				task.isAssigned = true;
+				reply.index = task.index;
+				mtx.unlock();
+
+				reply.taskType = mr_tasktype::REDUCE;
+				return mr_protocol::OK;
+			}
+			mtx.unlock();
+		}
+	}
+
+	reply.taskType = mr_tasktype::NONE;
 
 	return mr_protocol::OK;
 }
 
 mr_protocol::status Coordinator::submitTask(int taskType, int index, bool &success) {
-	// Lab2 : Your code goes here.
+	success = false;
+	if (taskType == mr_tasktype::MAP) {
+		mtx.lock();
+		if (!mapTasks[index].isCompleted) {
+			mapTasks[index].isCompleted = true;
+			++completedMapCount;
+			mtx.unlock();
+
+			success = true;
+			return mr_protocol::OK;
+		}
+		mtx.unlock();
+	}
+	else if (taskType == mr_tasktype::REDUCE) {
+		mtx.lock();
+		if (!reduceTasks[index].isCompleted) {
+			reduceTasks[index].isCompleted = true;
+			++completedReduceCount;
+			if (completedReduceCount >= long(this->reduceTasks.size())) {
+				isFinished = true;
+			}
+			mtx.unlock();
+
+			success = true;
+			return mr_protocol::OK;
+		}
+		mtx.unlock();
+	}
 
 	return mr_protocol::OK;
 }
@@ -145,10 +202,8 @@ int main(int argc, char *argv[])
 
 	Coordinator c(files, REDUCER_COUNT);
 	
-	//
-	// Lab2: Your code here.
-	// Hints: Register "askTask" and "submitTask" as RPC handlers here
-	// 
+	server.reg(mr_protocol::asktask, &c, &Coordinator::askTask);
+	server.reg(mr_protocol::submittask, &c, &Coordinator::submitTask);
 
 	while(!c.Done()) {
 		sleep(1);
