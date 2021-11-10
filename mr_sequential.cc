@@ -8,14 +8,17 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <cctype>
 
 using namespace std;
 
-typedef struct {
+struct KeyVal {
     string key;
     string val;
-}
-KeyVal;
+
+    KeyVal() {}
+    KeyVal(string key, string val) : key(key), val(val) {}
+};
 
 //
 // The map function is called once for each file of input. The first
@@ -26,9 +29,25 @@ KeyVal;
 //
 vector<KeyVal> Map(const string &filename, const string &content)
 {
-    // Your code goes here
-    // Hints: split contents into an array of words.
+    vector<KeyVal> words;
+    size_t len = content.length();
+    size_t start = 0;
+    for (size_t i = 0; i < len; ++i) {
+        if (!isalpha(content[i])) {
+            if (start == i) {
+                ++start;
+            }
+            else {
+                words.push_back(KeyVal(content.substr(start, i - start), "1"));
+                start = i + 1;
+            }
+        }
+    }
+    if (start != len) {
+        words.push_back(KeyVal(content.substr(start, len - start), "1"));
+    }
 
+    return words;
 }
 
 //
@@ -38,9 +57,7 @@ vector<KeyVal> Map(const string &filename, const string &content)
 //
 string Reduce(const string &key, const vector <string> &values)
 {
-    // Your code goes here
-    // Hints: return the number of occurrences of the word.
-
+    return to_string(values.size());
 }
 
 int main(int argc, char ** argv)

@@ -47,20 +47,44 @@ chfs_client::isfile(inum inum)
         printf("isfile: %lld is a file\n", inum);
         return true;
     } 
-    printf("isfile: %lld is a dir\n", inum);
+    printf("isfile: %lld is not a file\n", inum);
     return false;
 }
-/** Your code here for Lab...
- * You may need to add routines such as
- * readlink, issymlink here to implement symbolic link.
- * 
- * */
 
 bool
 chfs_client::isdir(inum inum)
 {
-    // Oops! is this still correct when you implement symlink?
-    return ! isfile(inum);
+    extent_protocol::attr a;
+
+    if (ec->getattr(inum, a) != extent_protocol::OK) {
+        printf("error getting attr\n");
+        return false;
+    }
+
+    if (a.type == extent_protocol::T_DIR) {
+        printf("isdir: %lld is a dir\n", inum);
+        return true;
+    }
+    printf("isdir: %lld is not a dir\n", inum);
+    return false;
+}
+
+bool 
+chfs_client::issymlink(inum inum)
+{
+    extent_protocol::attr a;
+
+    if (ec->getattr(inum, a) != extent_protocol::OK) {
+        printf("error getting attr\n");
+        return false;
+    }
+
+    if (a.type == extent_protocol::T_SYMLINK) {
+        printf("issymlink: %lld is a symlink\n", inum);
+        return true;
+    }
+    printf("issymlink: %lld is not a symlink\n", inum);
+    return false;
 }
 
 int
@@ -118,12 +142,13 @@ int
 chfs_client::setattr(inum ino, size_t size)
 {
     int r = OK;
+    std::string buf;
 
-    /*
-     * your code goes here.
-     * note: get the content of inode ino, and modify its content
-     * according to the size (<, =, or >) content length.
-     */
+    r = ec->get(ino, buf);
+    if (r == OK) {
+        buf.resize(size);
+        r = ec->put(ino, buf);
+    }
 
     return r;
 }
@@ -132,12 +157,28 @@ int
 chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
 {
     int r = OK;
+    
+    bool found = false;
+    r = lookup(parent, name, found, ino_out);
+    if (found) r = EXIST;
 
-    /*
-     * your code goes here.
-     * note: lookup is what you need to check if file exist;
-     * after create file or dir, you must remember to modify the parent infomation.
-     */
+    if (r == OK) {
+        r = ec->create(extent_protocol::T_FILE, ino_out);
+        if (r == OK) {
+            std::string buf;
+            r = ec->get(parent, buf);
+
+            if (r == OK) {
+                dirent_n ent;
+                ent.inum = ino_out;
+                ent.len = strlen(name);
+                memcpy(ent.name, name, ent.len);
+                buf.append((char*)&ent, sizeof(dirent_n));
+
+                r = ec->put(parent, buf);
+            }
+        }
+    }
 
     return r;
 }
@@ -147,11 +188,27 @@ chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out)
 {
     int r = OK;
 
-    /*
-     * your code goes here.
-     * note: lookup is what you need to check if directory exist;
-     * after create file or dir, you must remember to modify the parent infomation.
-     */
+    bool found = false;
+    r = lookup(parent, name, found, ino_out);
+    if (found) r = EXIST;
+
+    if (r == OK) {
+        r = ec->create(extent_protocol::T_DIR, ino_out);
+        if (r == OK) {
+            std::string buf;
+            r = ec->get(parent, buf);
+
+            if (r == OK) {
+                dirent_n ent;
+                ent.inum = ino_out;
+                ent.len = strlen(name);
+                memcpy(ent.name, name, ent.len);
+                buf.append((char*)&ent, sizeof(dirent_n));
+
+                r = ec->put(parent, buf);
+            }
+        }
+    }
 
     return r;
 }
@@ -160,12 +217,22 @@ int
 chfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out)
 {
     int r = OK;
+    found = false;
+    extent_protocol::attr a;
 
-    /*
-     * your code goes here.
-     * note: lookup file from parent dir according to name;
-     * you should design the format of directory content.
-     */
+    r = ec->getattr(parent, a);
+    if (r == OK) {
+        std::list<dirent> entries;
+
+        readdir(parent, entries);
+        for (dirent de : entries)
+        {
+            if (de.name == name) {
+                found = true;
+                ino_out = de.inum;
+            }
+        }
+    }
 
     return r;
 }
@@ -174,12 +241,27 @@ int
 chfs_client::readdir(inum dir, std::list<dirent> &list)
 {
     int r = OK;
+    extent_protocol::attr a;
 
-    /*
-     * your code goes here.
-     * note: you should parse the dirctory content using your defined format,
-     * and push the dirents to the list.
-     */
+    r = ec->getattr(dir, a);
+    if (r == OK) {
+        std::string buf;
+        r = ec->get(dir, buf);
+        if (r == OK) {
+            const char* ptr = buf.data();
+            size_t ent_num = buf.size() / sizeof(dirent_n);
+            for (size_t i = 0; i < ent_num; ++i) {
+                dirent_n ent_n;
+                memcpy(&ent_n, ptr + i * sizeof(dirent_n), sizeof(dirent_n));
+
+                dirent ent;
+                ent.inum = ent_n.inum;
+                ent.name = std::string(ent_n.name, ent_n.len);
+
+                list.push_back(ent);
+            }
+        }
+    }
 
     return r;
 }
@@ -188,11 +270,18 @@ int
 chfs_client::read(inum ino, size_t size, off_t off, std::string &data)
 {
     int r = OK;
+    std::string buf;
 
-    /*
-     * your code goes here.
-     * note: read using ec->get().
-     */
+    r = ec->get(ino, buf);
+    if (r == OK) {
+        if ((size_t)off < buf.size()) {
+            size = size < buf.size() - (size_t)off ? size : buf.size() - (size_t)off;
+            data = buf.substr(off, size);
+        }
+        else {
+            data = std::string();
+        }
+    }
 
     return r;
 }
@@ -202,12 +291,23 @@ chfs_client::write(inum ino, size_t size, off_t off, const char *data,
         size_t &bytes_written)
 {
     int r = OK;
+    std::string buf;
+    
+    r = ec->get(ino, buf);
+    if (r == OK) {
+        /*if ((size_t)off <= buf.size()) {
+            bytes_written = size;
+        }
+        else {
+            bytes_written = (size_t)off + size - buf.size();
+        }*/
+        if (off + size > buf.size()) {
+            buf.resize(off + size, '\0');
+        }
+        buf.replace(off, size, std::string(data,size));
 
-    /*
-     * your code goes here.
-     * note: write using ec->put().
-     * when off > length of original file, fill the holes with '\0'.
-     */
+        r = ec->put(ino, buf);
+    }
 
     return r;
 }
@@ -215,13 +315,81 @@ chfs_client::write(inum ino, size_t size, off_t off, const char *data,
 int chfs_client::unlink(inum parent,const char *name)
 {
     int r = OK;
+    inum id;
 
-    /*
-     * your code goes here.
-     * note: you should remove the file using ec->remove,
-     * and update the parent directory content.
-     */
+    bool found = false;
+    r = lookup(parent, name, found, id);
+    if (r == OK && !found) r = NOENT;
+
+    if (r == OK) {
+        r = ec->remove(id);
+        if (r == OK) {
+            std::list<dirent> entries;
+            r = readdir(parent, entries);
+
+            if (r == OK) {
+                std::string buf;
+                for (dirent ent : entries) {
+                    if (ent.inum == id) continue;
+
+                    dirent_n ent_n;
+                    ent_n.inum = ent.inum;
+                    ent_n.len = ent.name.size();
+                    memcpy(ent_n.name, ent.name.data(), ent_n.len);
+
+                    buf.append((char*)&ent_n, sizeof(dirent_n));
+                }
+
+                r = ec->put(parent, buf);
+            }
+        }
+    }
 
     return r;
 }
+
+int 
+chfs_client::readlink(inum ino, std::string& buf)
+{
+    int r = OK;
+
+    r = ec->get(ino, buf);
+
+    return r;
+}
+
+int
+chfs_client::symlink(inum parent, const char* name, const char* link, inum& ino_out) 
+{
+    int r = OK;
+
+    bool found = false;
+    r = lookup(parent, name, found, ino_out);
+    if (found) r = EXIST;
+
+    if (r == OK) {
+        r = ec->create(extent_protocol::T_SYMLINK, ino_out);
+        if (r == OK) {
+            r = ec->put(ino_out, std::string(link));
+
+            if (r == OK) {
+                std::string buf;
+                r = ec->get(parent, buf);
+
+                if (r == OK) {
+                    dirent_n ent;
+                    ent.inum = ino_out;
+                    ent.len = strlen(name);
+                    memcpy(ent.name, name, ent.len);
+                    buf.append((char*)&ent, sizeof(dirent_n));
+
+                    r = ec->put(parent, buf);
+                }
+            }
+        }
+    }
+
+    return r;
+}
+
 
