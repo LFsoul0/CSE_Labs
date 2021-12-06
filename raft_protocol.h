@@ -20,7 +20,10 @@ enum raft_rpc_status {
 
 class request_vote_args {
 public:
-    // Your code here
+    int term;
+    int candidateId;
+    int lastLogIndex;
+    int lastLogTerm;
 };
 
 marshall& operator<<(marshall &m, const request_vote_args& args);
@@ -29,73 +32,103 @@ unmarshall& operator>>(unmarshall &u, request_vote_args& args);
 
 class request_vote_reply {
 public:
-    // Your code here
+    int term;
+    bool voteGranted;
 };
 
 marshall& operator<<(marshall &m, const request_vote_reply& reply);
 unmarshall& operator>>(unmarshall &u, request_vote_reply& reply);
 
 template<typename command>
-class log_entry {
+class log_entry { 
 public:
-    // Your code here
+    int index;
+    int term;
+    command cmd;
+
+    log_entry(int index = 0, int term = 0) : index(index), term(term) {}
+    log_entry(int index, int term, command cmd) : index(index), term(term), cmd(cmd) {}
 };
 
 template<typename command>
 marshall& operator<<(marshall &m, const log_entry<command>& entry) {
-    // Your code here
+    m << entry.index;
+    m << entry.term;
+    m << entry.cmd;
     return m;
 }
 
 template<typename command>
 unmarshall& operator>>(unmarshall &u, log_entry<command>& entry) {
-    // Your code here
+    u >> entry.index;
+    u >> entry.term;
+    u >> entry.cmd;
     return u;
 }
 
 template<typename command>
 class append_entries_args {
 public:
-    // Your code here
+    int term;
+    int leaderId;
+    int prevLogIndex;
+    int prevLogTerm;
+    std::vector<log_entry<command>> entries;
+    int leaderCommit;
 };
 
 template<typename command>
 marshall& operator<<(marshall &m, const append_entries_args<command>& args) {
-    // Your code here
+    m << args.term;
+    m << args.leaderId;
+    m << args.prevLogIndex;
+    m << args.prevLogTerm;
+    m << args.entries;
+    m << args.leaderCommit;
     return m;
 }
 
 template<typename command>
 unmarshall& operator>>(unmarshall &u, append_entries_args<command>& args) {
-    // Your code here
+    u >> args.term;
+    u >> args.leaderId;
+    u >> args.prevLogIndex;
+    u >> args.prevLogTerm;
+    u >> args.entries;
+    u >> args.leaderCommit;
     return u;
 }
 
 class append_entries_reply {
 public:
-    // Your code here
+    int term;
+    bool success;
 };
 
 marshall& operator<<(marshall &m, const append_entries_reply& reply);
-unmarshall& operator>>(unmarshall &m, append_entries_reply& reply);
+unmarshall& operator>>(unmarshall &u, append_entries_reply& reply);
 
 
 class install_snapshot_args {
 public:
-    // Your code here
+    int term;
+    int leaderId;
+    int lastIncludedIndex;
+    int lastIncludedTerm;
+    std::vector<char> snapshot;
 };
 
 marshall& operator<<(marshall &m, const install_snapshot_args& args);
-unmarshall& operator>>(unmarshall &m, install_snapshot_args& args);
+unmarshall& operator>>(unmarshall &u, install_snapshot_args& args);
 
 
 class install_snapshot_reply {
 public:
-    // Your code here
+    int term;
 };
 
 marshall& operator<<(marshall &m, const install_snapshot_reply& reply);
-unmarshall& operator>>(unmarshall &m, install_snapshot_reply& reply);
+unmarshall& operator>>(unmarshall &u, install_snapshot_reply& reply);
 
 
 #endif // raft_protocol_h

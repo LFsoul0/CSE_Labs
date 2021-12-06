@@ -9,6 +9,8 @@
 #include <chrono>
 #include <atomic>
 #include <condition_variable>
+#include <cstring>
+#include <sstream>
 
 class raft_command {
 public:
@@ -81,6 +83,9 @@ unmarshall& operator>>(unmarshall &u, kv_command& cmd);
 class kv_state_machine : public raft_state_machine {
 public:
     virtual ~kv_state_machine();
+
+    std::mutex mtx;
+    std::map<std::string, std::string> store;
 
     // Apply a log to the state machine.
     virtual void apply_log(raft_command&) override;
