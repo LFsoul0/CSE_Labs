@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <cctype>
+#include <algorithm>
 
 #include "rpc.h"
 #include "mr_protocol.h"
@@ -18,8 +20,11 @@
 using namespace std;
 
 struct KeyVal {
-    string key;
-    string val;
+	string key;
+	string val;
+
+	KeyVal() {}
+	KeyVal(string key, string val) : key(key), val(val) {}
 };
 
 //
@@ -31,8 +36,25 @@ struct KeyVal {
 //
 vector<KeyVal> Map(const string &filename, const string &content)
 {
-	// Copy your code from mr_sequential.cc here.
+	vector<KeyVal> words;
+	size_t len = content.length();
+	size_t start = 0;
+	for (size_t i = 0; i < len; ++i) {
+		if (!isalpha(content[i])) {
+			if (start == i) {
+				++start;
+			}
+			else {
+				words.push_back(KeyVal(content.substr(start, i - start), "1"));
+				start = i + 1;
+			}
+		}
+	}
+	if (start != len) {
+		words.push_back(KeyVal(content.substr(start, len - start), "1"));
+	}
 
+	return words;
 }
 
 //
@@ -42,8 +64,7 @@ vector<KeyVal> Map(const string &filename, const string &content)
 //
 string Reduce(const string &key, const vector < string > &values)
 {
-    // Copy your code from mr_sequential.cc here.
-
+	return to_string(values.size());
 }
 
 
@@ -87,14 +108,75 @@ Worker::Worker(const string &dst, const string &dir, MAPF mf, REDUCEF rf)
 
 void Worker::doMap(int index, const vector<string> &filenames)
 {
-	// Lab2: Your code goes here.
+	string filename = filenames.back();
+	string content;
 
+	getline(ifstream(filename), content, '\0');
+	vector<KeyVal> KVA = mapf(filename, content);
+
+	stringstream ss[REDUCER_COUNT];
+	for (KeyVal& kv : KVA) {
+		unsigned long hash = 0;
+		for (char& c : kv.key) {
+			hash = hash + c;
+		}
+		hash = hash % REDUCER_COUNT;
+
+		ss[hash] << kv.key.data() << '\n';
+	}
+
+	ofstream ofs;
+	for (int i = 0; i < REDUCER_COUNT; ++i) {
+		ofs.open("mr-" + to_string(index) + "-" + to_string(i), ios_base::trunc);
+		ofs << ss[i].str();
+		ofs.close();
+	}
 }
 
 void Worker::doReduce(int index)
 {
-	// Lab2: Your code goes here.
+	vector <KeyVal> intermediate;
 
+	ifstream ifs;
+	for (unsigned int i = 0;; ++i) {
+		string content;
+		KeyVal kv("", "1");
+
+		ifs.open("mr-" + to_string(i) + "-" + to_string(index));
+		if (!ifs.is_open()) break;
+
+		getline(ifs, content, '\0');
+		istringstream ss(content);
+		while (getline(ss, kv.key, '\n')) {
+			intermediate.push_back(kv);
+		}
+
+		ifs.close();
+	}
+
+	sort(intermediate.begin(), intermediate.end(),
+		[](KeyVal const& a, KeyVal const& b) {
+			return a.key < b.key;
+		});
+
+	stringstream ss;
+	unsigned int size = intermediate.size();
+	for (unsigned int i = 0; i < size;) {
+		string key = intermediate[i].key;
+		vector<string> values;
+
+		for (; i < size && intermediate[i].key == key; ++i) {
+			values.push_back(intermediate[i].val);
+		}
+
+		string output = Reduce(key, values);
+		ss << key.data() << ' ' << output.data() << '\n';
+	}
+
+	ofstream ofs;
+	ofs.open("mr-out-" + to_string(index));
+	ofs << ss.str();
+	ofs.close();
 }
 
 void Worker::doSubmit(mr_tasktype taskType, int index)
@@ -109,16 +191,26 @@ void Worker::doSubmit(mr_tasktype taskType, int index)
 
 void Worker::doWork()
 {
+	mr_protocol::AskTaskResponse response;
+	mr_protocol::status ret;
+	vector<string> filenames;
+
 	for (;;) {
-
-		//
-		// Lab2: Your code goes here.
-		// Hints: send asktask RPC call to coordinator
-		// if mr_tasktype::MAP, then doMap and doSubmit
-		// if mr_tasktype::REDUCE, then doReduce and doSubmit
-		// if mr_tasktype::NONE, meaning currently no work is needed, then sleep
-		//
-
+		ret = cl->call(mr_protocol::asktask, 0, response);
+		if (ret == mr_protocol::OK) {
+			if (response.taskType == mr_tasktype::MAP) {
+				filenames.push_back(response.filename);
+				doMap(response.index, filenames);
+				doSubmit(response.taskType, response.index);
+			}
+			else if (response.taskType == mr_tasktype::REDUCE) {
+				doReduce(response.index);
+				doSubmit(response.taskType, response.index);
+			}
+			else {
+				sleep(1);
+			}
+		}
 	}
 }
 
