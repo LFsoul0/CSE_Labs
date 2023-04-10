@@ -4,7 +4,7 @@
 
 class value_entry {
 public:
-    value_entry() {}
+    value_entry(int value = 0) : value(value){}
 
     value_entry(const value_entry &entry) : value(entry.value) {}
 
@@ -16,9 +16,9 @@ public:
  * */
 class shard_client {
 public:
-    shard_client(const int shard_id, const int port) : active(true),
-                                                       shard_id(shard_id),
-                                                       node(new rpc_node(port)) {
+    shard_client(const int shard_id, const int port) 
+        : shard_id(shard_id), active(true), node(new rpc_node(port)) 
+    {
         this->store.resize(this->replica_num);
         // reg rpc handlers. You may add more handlers if necessary.
         this->node->reg(chdb_protocol::Dummy, this, &shard_client::dummy);
@@ -87,5 +87,20 @@ public:
     std::vector<std::map<int, value_entry>> store;
     int primary_replica = 0;
     int replica_num = 5;
+
+private:
+    struct log_entry {
+        int tx_id;
+        int key;
+        value_entry val;
+        bool create;
+
+        log_entry() : tx_id(0), key(0), val(), create(false) {}
+        log_entry(int tx_id, int key, const value_entry& val, bool create = false) : tx_id(tx_id), key(key), val(val), create(create) {}
+    };
+    std::vector<log_entry> undo_logs;
+    std::map<int, int> prepare_states;
+
+    void remove_tx(int tx_id);
 
 };

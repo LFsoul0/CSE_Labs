@@ -1,6 +1,12 @@
 #include "rpc.h"
 #include "raft_state_machine.h"
 
+#include <vector>
+#include <memory>
+#include <chrono>
+#include <atomic>
+#include <condition_variable>
+
 
 class chdb_command : public raft_command {
 public:
@@ -10,7 +16,6 @@ public:
         CMD_PUT,        // Put a key-value pair
     };
 
-    // TODO: You may add more fields for implementation.
     struct result {
         std::chrono::system_clock::time_point start;
         int key, value, tx_id;
@@ -30,13 +35,13 @@ public:
     virtual ~chdb_command() {}
 
 
-    int key, value, tx_id;
     command_type cmd_tp;
+    int key, value, tx_id;
     std::shared_ptr<result> res;
 
 
     virtual int size() const override {
-        return sizeof(*this);
+        return 13; // cmd_tp(char) + tx_id + key + val
     }
 
     virtual void serialize(char *buf, int size) const override;
@@ -53,7 +58,6 @@ public:
     virtual ~chdb_state_machine() {}
 
     // Apply a log to the state machine.
-    // TODO: Implement this function.
     virtual void apply_log(raft_command &cmd) override;
 
     // Generate a snapshot of the current state.

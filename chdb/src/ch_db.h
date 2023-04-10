@@ -4,6 +4,7 @@
 #include "common.h"
 #include "shard_client.h"
 
+#include <atomic>
 
 using shard_dispatch = int (*)(int key, int shard_num);
 using chdb_raft = raft<chdb_state_machine, chdb_command>;
@@ -18,11 +19,9 @@ public:
     shard_dispatch dispatch;            /* Dispatch requests to the target shard */
     chdb_raft_group *raft_group;
 
-    view_server(const int base_port,
-                shard_dispatch dispatch,
-                const int num_raft_nodes = 3) :
-            dispatch(dispatch),
-            node(new rpc_node(base_port)) {
+    view_server(const int base_port, shard_dispatch dispatch, const int num_raft_nodes = 3) 
+        : node(new rpc_node(base_port)), dispatch(dispatch) 
+    {
 #if RAFT_GROUP
         raft_group = new chdb_raft_group(num_raft_nodes);
 #endif
@@ -74,8 +73,8 @@ public:
 class chdb {
 public:
     chdb(const int shard_num, const int cluster_port, shard_dispatch dispatch = default_dispatch)
-            : max_tx_id(0),
-              vserver(new view_server(cluster_port, dispatch)) {
+        : vserver(new view_server(cluster_port, dispatch)), max_tx_id(0) 
+    {
         for (int i = 1; i <= shard_num; ++i) {
             shard_client *shard = new shard_client(i, i + cluster_port);
             vserver->add_shard_client(shard);
@@ -130,6 +129,7 @@ public:
     std::vector<shard_client *> shards;
     int max_tx_id;
     std::mutex tx_id_mtx;
+    std::mutex mtx;
 
 private:
     static int default_dispatch(const int key, int shard_num) {

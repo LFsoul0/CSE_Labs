@@ -33,7 +33,7 @@ friend class thread_pool;
         std::chrono::duration_cast<std::chrono::milliseconds>(\
             std::chrono::system_clock::now().time_since_epoch()\
         ).count();\
-        printf("[%ld][%s:%d][node %d term %d fl %d bl %d c %d a %d] " fmt "\n", now, __FILE__, __LINE__, my_id, current_term, log.front().index, last_log_index(), commit_index, last_applied, ##args); \
+        printf("[%ld][%s:%d][node %d term %d] " fmt "\n", now, __FILE__, __LINE__, my_id, current_term, ##args); \
     } while(0);
 
 
